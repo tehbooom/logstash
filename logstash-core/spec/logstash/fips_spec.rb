@@ -288,6 +288,111 @@ describe LogStash::FIPS do
             .to raise_error(LogStash::ConfigurationError)
         end
       end
+
+      it "allows AES/OFB/NoPadding (canonical, operation-level approved)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "AES/OFB/NoPadding", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      it "allows AES/CFB/NoPadding (canonical, CFB128, SNMPv3-aligned)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "AES/CFB/NoPadding", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      it "allows aes-256-ofb (OpenSSL-style, FIPS on)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "aes-256-ofb", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      it "allows aes-256-cfb (OpenSSL-style, FIPS on)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "aes-256-cfb", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      # collectd and SNMP pass uppercase OpenSSL-style names — confirm downcase-then-alias works
+      it "allows AES-256-OFB (uppercase OpenSSL, as collectd/SNMP emit it)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "AES-256-OFB", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      it "allows AES-256-CFB (uppercase OpenSSL, as collectd/SNMP emit it)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "AES-256-CFB", use: :cipher) }.not_to raise_error
+        end
+      end
+
+      # Regression guard: adding OFB/CFB must not loosen ECB or DES/3DES
+      it "still rejects AES/ECB (ECB not approved for confidentiality)" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "aes-256-ecb", use: :cipher) }
+            .to raise_error(LogStash::ConfigurationError)
+        end
+      end
+
+      it "still rejects DES after OFB/CFB addition" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "DES", use: :cipher) }
+            .to raise_error(LogStash::ConfigurationError)
+        end
+      end
+
+      it "still rejects 3DES (DESede) after OFB/CFB addition" do
+        with_fips_enabled(true) do
+          expect { described_class.check!(algorithm: "3des", use: :cipher) }
+            .to raise_error(LogStash::ConfigurationError)
+        end
+      end
+    end
+
+    # ── OpenSSL-style cipher name aliases (logstash-filter-cipher) ───────────
+    # These test the ALIASES entries added for OpenSSL-style spellings.  They are
+    # not in POLICY directly (input aliases only), so the round-trip invariant does
+    # not cover them — explicit cases are required.
+    context ":cipher — OpenSSL-style names (FIPS on)" do
+      {
+        "aes-256-cbc"  => false,
+        "aes-128-cbc"  => false,
+        "aes-192-cbc"  => false,
+        "aes-128-gcm"  => false,
+        "aes-256-gcm"  => false,
+        "aes-256-ctr"  => false,
+        "aes-256-ofb"  => false,
+        "aes-256-cfb"  => false,
+        "aes-256-GCM"  => false,  # case-insensitive
+        "aes-256-ecb"  => true,
+        "des-cbc"      => true,
+        "des-ede3-cbc" => true,
+      }.each do |cipher, should_raise|
+        if should_raise
+          it "rejects #{cipher.inspect} under FIPS" do
+            with_fips_enabled(true) do
+              expect { described_class.check!(algorithm: cipher, use: :cipher) }
+                .to raise_error(LogStash::ConfigurationError)
+            end
+          end
+        else
+          it "allows #{cipher.inspect} under FIPS" do
+            with_fips_enabled(true) do
+              expect { described_class.check!(algorithm: cipher, use: :cipher) }.not_to raise_error
+            end
+          end
+        end
+      end
+    end
+
+    context ":cipher — OpenSSL-style names (FIPS off)" do
+      %w[aes-256-cbc aes-128-gcm aes-256-ctr aes-256-ecb des-cbc des-ede3-cbc].each do |cipher|
+        it "is a no-op for #{cipher.inspect} when FIPS is disabled" do
+          with_fips_enabled(false) do
+            expect { described_class.check!(algorithm: cipher, use: :cipher) }.not_to raise_error
+          end
+        end
+      end
     end
 
     # ── :signature ───────────────────────────────────────────────────────────

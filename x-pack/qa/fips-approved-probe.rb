@@ -51,6 +51,7 @@ CANDIDATES = {
                             HmacSHA3-256 HmacSHA3-384 HmacSHA3-512],
   "Cipher"           => %w[DES/CBC/PKCS5Padding DESede/CBC/PKCS5Padding
                             AES/CBC/PKCS5Padding AES/GCM/NoPadding AES/CTR/NoPadding
+                            AES/OFB/NoPadding AES/CFB/NoPadding
                             RC4 Blowfish/CBC/PKCS5Padding ChaCha20-Poly1305],
   "Signature"        => %w[MD5withRSA SHA1withRSA SHA1withDSA
                             SHA256withRSA SHA256withECDSA SHA256withDSA SHA256withRSA/PSS

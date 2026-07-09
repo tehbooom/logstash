@@ -45,6 +45,11 @@
 #       because FIPS 186-5 (Feb 2023) withdrew DSA for new signature generation.
 #     - DESede (3DES): registered for FIPS 140-2 legacy compat; excluded from
 #       :cipher since we target 140-3.
+#     - AES/OFB/NoPadding and AES/CFB/NoPadding: confirmed approved at
+#       operation level under BCFIPS 2.0.1 approved_only=true.  AES/CFB
+#       resolves to CFB128 (full-block feedback — JCE default when no width
+#       suffix is given), which is the mode required by SNMPv3 AES privacy
+#       (RFC 3826).
 #     - PBKDF2 variants and scrypt: registered and confirmed approved at
 #       operation level with conformant parameters.
 #     - SecureRandom: BCFIPS 2.0.1 exposes "DEFAULT" and "NONCEANDIV" as JCE
@@ -102,7 +107,8 @@ module LogStash
                                 HmacSHA3-256 HmacSHA3-384 HmacSHA3-512].to_set.freeze,
       "Cipher"           => %w[DESede/CBC/PKCS5Padding
                                 AES/CBC/PKCS5Padding AES/GCM/NoPadding
-                                AES/CTR/NoPadding].to_set.freeze,
+                                AES/CTR/NoPadding AES/OFB/NoPadding
+                                AES/CFB/NoPadding].to_set.freeze,
       "Signature"        => %w[SHA1withRSA SHA1withDSA
                                 SHA256withRSA SHA256withECDSA SHA256withDSA SHA256withRSA/PSS
                                 SHA384withRSA SHA384withECDSA
@@ -146,9 +152,14 @@ module LogStash
       ].to_set.freeze,
 
       # Symmetric encryption.  DESede excluded (140-3 target; see module comment).
+      # OFB and CFB: operation-level confirmed approved under BCFIPS 2.0.1
+      # approved_only=true.  AES/CFB/NoPadding resolves to CFB128 (full-block
+      # feedback) — the JCE default when no feedback width is specified — which
+      # is what SNMPv3 AES privacy (RFC 3826) requires.
       # Pass the full JCE mode string or a recognised shorthand — see ALIASES.
       :cipher => %w[
         AES/CBC/PKCS5Padding AES/GCM/NoPadding AES/CTR/NoPadding
+        AES/OFB/NoPadding AES/CFB/NoPadding
       ].to_set.freeze,
 
       # Digital signatures.  SHA-1 and DSA excluded (see module comment).
@@ -175,7 +186,7 @@ module LogStash
     APPROVED_ALTERNATIVES = {
       :digest_security => "SHA-256, SHA-384, SHA-512, or a SHA-3 variant",
       :hmac            => "SHA-1 (HMAC-SHA-1), SHA-256, SHA-384, or SHA-512",
-      :cipher          => "AES/GCM/NoPadding, AES/CBC/PKCS5Padding, or AES/CTR/NoPadding",
+      :cipher          => "AES/GCM/NoPadding, AES/CBC/PKCS5Padding, AES/CTR/NoPadding, AES/OFB/NoPadding, or AES/CFB/NoPadding",
       :signature       => "SHA256withRSA, SHA384withRSA, SHA512withRSA, " \
                           "SHA256withECDSA, SHA384withECDSA, SHA512withECDSA, " \
                           "or SHA256withRSA/PSS",
@@ -238,6 +249,40 @@ module LogStash
       "aes/cbc/pkcs7padding"    => "AES/CBC/PKCS5Padding",
       "aes/ctr"                 => "AES/CTR/NoPadding",
       "aes/ctr/nopadding"       => "AES/CTR/NoPadding",
+      "aes/ofb"                 => "AES/OFB/NoPadding",
+      "aes/ofb/nopadding"       => "AES/OFB/NoPadding",
+      "aes/cfb"                 => "AES/CFB/NoPadding",
+      "aes/cfb/nopadding"       => "AES/CFB/NoPadding",
+      # ── OpenSSL-style cipher names (logstash-filter-cipher) ─────────────
+      # Approved: map to the canonical POLICY[:cipher] form.
+      "aes-128-cbc"             => "AES/CBC/PKCS5Padding",
+      "aes-192-cbc"             => "AES/CBC/PKCS5Padding",
+      "aes-256-cbc"             => "AES/CBC/PKCS5Padding",
+      "aes-128-gcm"             => "AES/GCM/NoPadding",
+      "aes-192-gcm"             => "AES/GCM/NoPadding",
+      "aes-256-gcm"             => "AES/GCM/NoPadding",
+      "aes-128-ctr"             => "AES/CTR/NoPadding",
+      "aes-192-ctr"             => "AES/CTR/NoPadding",
+      "aes-256-ctr"             => "AES/CTR/NoPadding",
+      "aes-128-ofb"             => "AES/OFB/NoPadding",
+      "aes-192-ofb"             => "AES/OFB/NoPadding",
+      "aes-256-ofb"             => "AES/OFB/NoPadding",
+      "aes-128-cfb"             => "AES/CFB/NoPadding",
+      "aes-192-cfb"             => "AES/CFB/NoPadding",
+      "aes-256-cfb"             => "AES/CFB/NoPadding",
+      # Non-approved: map to a non-POLICY canonical so check! rejects them.
+      # ECB is not approved for confidentiality even though it is AES.
+      "aes-128-ecb"             => "AES/ECB/NoPadding",
+      "aes-192-ecb"             => "AES/ECB/NoPadding",
+      "aes-256-ecb"             => "AES/ECB/NoPadding",
+      # OpenSSL DES / 3DES names
+      "des-cbc"                 => "DES/CBC/PKCS5Padding",
+      "des-ede3-cbc"            => "DESede/CBC/PKCS5Padding",
+      "des-ede-cbc"             => "DESede/CBC/PKCS5Padding",
+      # OpenSSL stream / other cipher names
+      "rc4-40"                  => "RC4",
+      "bf-cbc"                  => "Blowfish/CBC",
+      "bf-ecb"                  => "Blowfish/ECB",
       # ── DES / 3DES ──────────────────────────────────────────────────────
       "des"                     => "DES",
       "3des"                    => "3DES",
