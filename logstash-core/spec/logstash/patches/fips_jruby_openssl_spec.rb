@@ -74,10 +74,15 @@ describe "fips_jruby_openssl patch" do
       expect(java.lang.System).to have_received(:setProperty).with(ssl_provider_prop, "BCJSSE")
     end
 
-    it "does not override jruby.openssl.ssl.provider if already set" do
-      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return("SomeOtherProvider")
+    it "does not override jruby.openssl.ssl.provider when already set to BCJSSE" do
+      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return("BCJSSE")
       load_patch
       expect(java.lang.System).not_to have_received(:setProperty).with(ssl_provider_prop, anything)
+    end
+
+    it "raises when jruby.openssl.ssl.provider is set to a non-FIPS provider" do
+      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return("SunJSSE")
+      expect { load_patch }.to raise_error(RuntimeError, /jruby.openssl.ssl.provider=BCJSSE.*SunJSSE/m)
     end
   end
 end

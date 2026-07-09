@@ -38,14 +38,27 @@
 # Activate when BCFIPS is registered as the first JVM security provider.
 # We key off provider presence rather than approved_only=true because we run
 # C:HYBRID mode (matching Elasticsearch) which does not set approved_only.
+
+# Fail fast if openssl was already required before this patch ran. Once
+# SecurityHelper has initialised it caches its provider and setSecurityProvider
+# has no effect, so late loading silently leaves BC 1.84 in charge.
+if defined?(OpenSSL) && org.jruby.ext.openssl.SecurityHelper.isProviderRegistered
+  raise "fips_jruby_openssl must be required before 'openssl': " \
+        "SecurityHelper already initialised with the non-FIPS BC 1.84 provider"
+end
+
 bcfips_provider = java.security.Security.getProvider("BCFIPS")
-return unless bcfips_provider && java.security.Security.getProviders.first&.getName == "BCFIPS"
+if bcfips_provider && java.security.Security.getProviders.first&.getName == "BCFIPS"
+  # Route all JCE operations (Cipher, MessageDigest, KeyFactory, etc.) through BCFIPS.
+  org.jruby.ext.openssl.SecurityHelper.setSecurityProvider(bcfips_provider)
 
-# Route all JCE operations (Cipher, MessageDigest, KeyFactory, etc.) through BCFIPS.
-org.jruby.ext.openssl.SecurityHelper.setSecurityProvider(bcfips_provider)
-
-# Route SSLContext through BCJSSE (which uses BCFIPS for its underlying crypto).
-# Only set if not already explicitly configured by the operator.
-unless java.lang.System.getProperty("jruby.openssl.ssl.provider")
-  java.lang.System.setProperty("jruby.openssl.ssl.provider", "BCJSSE")
+  # Route SSLContext through BCJSSE (which uses BCFIPS for its underlying crypto).
+  existing_ssl_provider = java.lang.System.getProperty("jruby.openssl.ssl.provider")
+  if existing_ssl_provider.nil?
+    java.lang.System.setProperty("jruby.openssl.ssl.provider", "BCJSSE")
+  elsif existing_ssl_provider != "BCJSSE"
+    raise "FIPS mode requires jruby.openssl.ssl.provider=BCJSSE, " \
+          "but it is set to #{existing_ssl_provider.inspect}. " \
+          "Remove the -Djruby.openssl.ssl.provider override from jvm.options."
+  end
 end

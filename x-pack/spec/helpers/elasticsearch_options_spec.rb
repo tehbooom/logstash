@@ -119,10 +119,12 @@ shared_examples 'elasticsearch options hash is populated with secure options' do
   end
 
   context "with cipher suites" do
-    context "provided" do
+    let(:valid_cipher) { LogStash::Helpers::ElasticsearchOptions::SUPPORTED_CIPHER_SUITES.first }
+
+    context "provided with a supported cipher" do
       let(:settings) do
         super().merge({
-          "xpack.monitoring.elasticsearch.ssl.cipher_suites" => ["FOO", "BAR"],
+          "xpack.monitoring.elasticsearch.ssl.cipher_suites" => [valid_cipher],
         })
       end
 
@@ -132,8 +134,21 @@ shared_examples 'elasticsearch options hash is populated with secure options' do
                                                                                           "user" => elasticsearch_username,
                                                                                           "password" => elasticsearch_password,
                                                                                           "ssl_enabled" => true,
-                                                                                          "ssl_cipher_suites" => ["FOO", "BAR"],
+                                                                                          "ssl_cipher_suites" => [valid_cipher],
                                                                                         )
+      end
+    end
+
+    context "provided with an unsupported cipher" do
+      let(:settings) do
+        super().merge({
+          "xpack.monitoring.elasticsearch.ssl.cipher_suites" => ["FOO", "BAR"],
+        })
+      end
+
+      it "raises an ArgumentError" do
+        expect { test_class.es_options_from_settings('monitoring', system_settings) }
+          .to raise_error(ArgumentError, /Unknown or unsupported cipher suite\(s\).*FOO.*BAR/m)
       end
     end
 

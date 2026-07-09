@@ -6,6 +6,12 @@ module LogStash module Helpers
   module ElasticsearchOptions
     extend self
 
+    SUPPORTED_CIPHER_SUITES = begin
+      ctx = javax.net.ssl.SSLContext.getInstance('TLS')
+      ctx.init(nil, nil, nil)
+      ctx.getSupportedSSLParameters.getCipherSuites.to_a.freeze
+    end
+
     ES_SETTINGS = %w(
       ssl.certificate_authority
       ssl.ca_trusted_fingerprint
@@ -57,6 +63,13 @@ module LogStash module Helpers
       # avoid passing an empty array to the plugin configuration
       if opts['ssl_cipher_suites']&.empty?
         opts.delete('ssl_cipher_suites')
+      end
+
+      if opts['ssl_cipher_suites']
+        unknown = opts['ssl_cipher_suites'] - SUPPORTED_CIPHER_SUITES
+        unless unknown.empty?
+          raise ArgumentError, "Unknown or unsupported cipher suite(s) in ssl.cipher_suites: #{unknown.join(', ')}"
+        end
       end
 
       # process remaining settings

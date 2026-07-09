@@ -114,6 +114,7 @@ module LogStash
             Setting::StringSetting.new("keystore.file", ::File.join(::File.join(LogStash::Environment::LOGSTASH_HOME, "config"), "logstash.keystore"), false), # will be populated on
     Setting::NullableStringSetting.new("monitoring.cluster_uuid"),
             Setting::StringSetting.new("pipeline.buffer.type", "heap", true, ["direct", "heap"]),
+           Setting::BooleanSetting.new("fips_mode.enabled", false),
            Setting::BooleanSetting.new("otel.metrics.enabled", false),
            Setting::StringSetting.new("otel.exporter.otlp.endpoint", "http://localhost:4317"),
           Setting::TimeValueSetting.new("otel.metric.export.interval", "10s"),

@@ -121,6 +121,10 @@ Creates the keystore in the directory defined in the `path.settings` setting.
 If a keystore already exists, the `create` command can overwrite it (after a Y/N prompt). Selecting `Y` clears all keys and secrets that were previously stored.
 ::::
 
+::::{note}
+When FIPS mode is enabled, Logstash uses the BCFKS keystore format instead of PKCS12. If you have an existing PKCS12 keystore and are enabling FIPS, you must recreate the keystore with `bin/logstash-keystore create` and re-add your keys. Logstash will not start with a PKCS12 keystore in FIPS mode.
+::::
+
 
 ::::{tip}
 Set a [keystore password](#keystore-password) when you create the keystore.

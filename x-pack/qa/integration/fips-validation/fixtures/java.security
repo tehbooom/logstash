@@ -4,7 +4,7 @@ security.provider.3=SUN
 security.provider.4=-BC
 
 securerandom.source=file:/dev/urandom
-securerandom.strongAlgorithms=NativePRNGBlocking:SUN,DRBG:SUN
+securerandom.strongAlgorithms=DEFAULT:BCFIPS
 securerandom.drbg.config=
 
 login.configuration.provider=sun.security.provider.ConfigFile

@@ -15,7 +15,15 @@ module LogStash module GeoipDatabaseManagement
     end
 
     def md5(file_path)
-      file_exist?(file_path) ? Digest::MD5.hexdigest(::File.read(file_path)) : ""
+      return "" unless file_exist?(file_path)
+      # Must use MD5: the remote endpoint returns an md5_hash field and we
+      # compare it byte-for-byte to detect stale local copies. There is no
+      # algorithm-agility here. Pin the SUN provider because BCFIPS rejects
+      # MD5 via JCE even in C:HYBRID mode; SUN is always present and is
+      # appropriate for this non-security integrity check.
+      digest = java.security.MessageDigest.getInstance("MD5", "SUN")
+      digest.update(::File.read(file_path).to_java_bytes)
+      digest.digest.map { |b| "%02x" % (b & 0xff) }.join
     end
 
     def error_details(e, logger)

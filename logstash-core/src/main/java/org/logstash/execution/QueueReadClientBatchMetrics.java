@@ -11,8 +11,8 @@ import org.logstash.instrument.metrics.gauge.LazyDelegatingGauge;
 import org.logstash.instrument.metrics.histogram.HistogramMetric;
 import org.logstash.instrument.metrics.histogram.LifetimeHistogramMetric;
 
-import java.security.SecureRandom;
 import java.util.Arrays;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static org.logstash.instrument.metrics.MetricKeys.*;
 
@@ -27,7 +27,6 @@ class QueueReadClientBatchMetrics {
     private LongCounter pipelineMetricBatchTotalEvents;
     private HistogramMetric pipelineMetricBatchByteSizeFlowHistogram;
     private HistogramMetric pipelineMetricBatchEventCountFlowHistogram;
-    private final SecureRandom random = new SecureRandom();
     private LazyDelegatingGauge currentBatchDimensions;
 
     public QueueReadClientBatchMetrics(QueueFactoryExt.BatchMetricMode batchMetricMode) {
@@ -66,7 +65,7 @@ class QueueReadClientBatchMetrics {
         boolean updateMetric = true;
         if (batchMetricMode == QueueFactoryExt.BatchMetricMode.MINIMAL) {
             // 1% chance to update metric
-            updateMetric = random.nextInt(100) < 2;
+            updateMetric = ThreadLocalRandom.current().nextInt(100) < 2;
         }
 
         if (updateMetric) {

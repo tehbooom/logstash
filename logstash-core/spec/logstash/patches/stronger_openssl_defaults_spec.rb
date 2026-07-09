@@ -19,7 +19,7 @@ require "spec_helper"
 
 describe "stronger_openssl_defaults patch" do
   before do
-    load File.expand_path("../../../lib/logstash/patches/stronger_openssl_defaults.rb", __dir__)
+    require File.expand_path("../../../lib/logstash/patches/stronger_openssl_defaults.rb", __dir__)
   end
 
   it "defines OpenSSL::SSL::SSLContext::DEFAULT_PARAMS" do

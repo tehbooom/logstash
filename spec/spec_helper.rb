@@ -63,8 +63,8 @@ RSpec.configure do |c|
   Flores::RSpec.configure(c)
   c.include LogStashHelper
   c.extend LogStashHelper
-  # Detect FIPS via BCFIPS provider presence; C:HYBRID mode does not set approved_only=true
-  c.filter_run_excluding skip_fips: true if !java.security.Security.getProvider("BCFIPS").nil?
+  # Detect FIPS via BCFIPS provider presence and position; C:HYBRID mode does not set approved_only=true
+  c.filter_run_excluding skip_fips: true if (java.security.Security.getProvider("BCFIPS") && java.security.Security.getProviders.first&.getName == "BCFIPS")
   if ENV['COVERAGE']
     c.after(:suite) do
       SimpleCov.result.format!

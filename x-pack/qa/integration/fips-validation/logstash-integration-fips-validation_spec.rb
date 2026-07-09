@@ -4,7 +4,7 @@ context "FipsValidation Integration Plugin" do
   def fips_configured_jvm?
     # Detect FIPS by checking for the BCFIPS provider rather than approved_only,
     # since we run C:HYBRID mode which does not set approved_only=true.
-    !java.security.Security.getProvider("BCFIPS").nil?
+    java.security.Security.getProvider("BCFIPS") && java.security.Security.getProviders.first&.getName == "BCFIPS"
   end
 
   def fips_provider_jars

@@ -129,7 +129,7 @@ public final class JavaKeyStore implements SecretStore {
                 }
                 LOGGER.info("Created Logstash keystore at {}", keyStorePath.toAbsolutePath());
                 return this;
-            } catch (Exception | Error e) {
+            } catch (Exception | LinkageError e) {
                 throw new SecretStoreException.CreateException("Failed to create Logstash keystore.", e);
             }
         } catch (SecretStoreException sse) {
@@ -294,6 +294,11 @@ public final class JavaKeyStore implements SecretStore {
                         throw new SecretStoreException.AccessException(
                                 String.format("Can not access Logstash keystore at %s. Please verify correct file permissions and keystore password.",
                                         keyStorePath.toAbsolutePath()), ioe);
+                    } else if (FIPS_MODE && looksLikePkcs12(keyStorePath)) {
+                        throw new SecretStoreException.LoadException(
+                                String.format("Found a PKCS12 keystore at %s, but FIPS mode requires a BCFKS keystore. " +
+                                        "Please recreate it with: bin/logstash-keystore create",
+                                        keyStorePath.toAbsolutePath()), ioe);
                     } else {
                         throw new SecretStoreException.LoadException(String.format("Found a file at %s, but it is not a valid Logstash keystore.",
                                 keyStorePath.toAbsolutePath().toString()), ioe);
@@ -344,7 +349,7 @@ public final class JavaKeyStore implements SecretStore {
                 SecretStoreUtil.clearBytes(secret);
             }
             LOGGER.debug("persisted secret {}", identifier.toExternalForm());
-        } catch (Exception | Error e) {
+        } catch (Exception | LinkageError e) {
             throw new SecretStoreException.PersistException(identifier, e);
         } finally {
             releaseLock(lock);
@@ -403,7 +408,7 @@ public final class JavaKeyStore implements SecretStore {
                 passwordBasedKeySpec.clearPassword();
                 LOGGER.debug("retrieved secret {}", identifier.toExternalForm());
                 return secret;
-            } catch (Exception | Error e) {
+            } catch (Exception | LinkageError e) {
                 throw new SecretStoreException.RetrievalException(identifier, e);
             } finally {
                 releaseLock(lock);
@@ -447,5 +452,17 @@ public final class JavaKeyStore implements SecretStore {
      */
     private boolean valid(char[] chars) {
         return !(chars == null || chars.length == 0);
+    }
+
+    // PKCS12 files are DER-encoded ASN.1 SEQUENCE values: first byte is always 0x30,
+    // second byte is the BER length (0x82 for large stores, shorter values for small ones).
+    private static boolean looksLikePkcs12(Path path) {
+        try (InputStream is = Files.newInputStream(path)) {
+            int tag = is.read();
+            int len = is.read();
+            return tag == 0x30 && len >= 0x01;
+        } catch (IOException e) {
+            return false;
+        }
     }
 }

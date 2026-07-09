@@ -782,4 +782,28 @@ public class JavaKeyStoreTest {
         Object randomInstance = randomField.get(null);
         assertThat(randomInstance).isInstanceOf(java.security.SecureRandom.class);
     }
+
+    @Test
+    public void testLooksLikePkcs12_detectsRealPkcs12File() throws Exception {
+        java.lang.reflect.Method method = JavaKeyStore.class.getDeclaredMethod("looksLikePkcs12", Path.class);
+        method.setAccessible(true);
+
+        // Create a real PKCS12 keystore using the standard JCA API
+        java.security.KeyStore pkcs12 = java.security.KeyStore.getInstance("pkcs12");
+        pkcs12.load(null, null);
+        Path pkcs12Path = folder.newFile("test.p12").toPath();
+        try (OutputStream os = Files.newOutputStream(pkcs12Path)) {
+            pkcs12.store(os, "changeit".toCharArray());
+        }
+        assertThat((boolean) method.invoke(null, pkcs12Path)).isTrue();
+
+        // A random non-PKCS12 file should not match
+        Path otherPath = folder.newFile("test.other").toPath();
+        Files.write(otherPath, "not a keystore".getBytes(StandardCharsets.UTF_8));
+        assertThat((boolean) method.invoke(null, otherPath)).isFalse();
+
+        // An empty file should not match
+        Path emptyPath = folder.newFile("test.empty").toPath();
+        assertThat((boolean) method.invoke(null, emptyPath)).isFalse();
+    }
 }
