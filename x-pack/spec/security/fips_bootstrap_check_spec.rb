@@ -62,6 +62,17 @@ describe LogStash::Security::FipsBootstrapCheck do
       end
     end
 
+    context "with required provider names in different case" do
+      before do
+        stub_all_checks_passing
+        settings.set("xpack.security.fips_mode.required_providers", ["bcfips", "BcJsSe"])
+      end
+
+      it "passes without error" do
+        expect { check }.not_to raise_error
+      end
+    end
+
     context "with a fully compliant FIPS environment and version-glob required providers" do
       before do
         stub_all_checks_passing

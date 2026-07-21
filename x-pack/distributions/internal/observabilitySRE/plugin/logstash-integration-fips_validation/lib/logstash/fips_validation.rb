@@ -41,12 +41,6 @@ module LogStash
 
       # ensure Bouncycastle is configured and ready
       begin
-        if Java::org.bouncycastle.crypto.CryptoServicesRegistrar.isInApprovedOnlyMode
-          accumulator.success "Bouncycastle Crypto is in `approved-only` mode"
-        else
-          accumulator.failure "Bouncycastle Crypto is not in 'approved-only' mode"
-        end
-
         if ::Java::org.bouncycastle.crypto.fips.FipsStatus.isReady
           accumulator.success "Bouncycastle Crypto is fips-ready"
         else

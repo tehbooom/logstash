@@ -65,7 +65,7 @@ module LogStash
         observed_providers = ::Java::java.security.Security.getProviders
         required_providers.filter_map do |provider_requirement|
           provider_name, version_pattern = provider_requirement.split(":", 2)
-          provider = observed_providers.find { |candidate| candidate.name == provider_name }
+          provider = observed_providers.find { |candidate| candidate.name.casecmp?(provider_name) }
 
           if provider.nil?
             "missing provider #{provider_name.inspect}"
