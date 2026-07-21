@@ -18,7 +18,7 @@ Plugins marked **SKIP** have no published source code (stub/placeholder reposito
 
 Logstash runs BouncyCastle FIPS in **C:HYBRID mode**, matching Elasticsearch's FIPS configuration. In hybrid mode, the BCFIPS provider is the first registered JVM security provider and handles all security-sensitive operations (TLS, key derivation, signature verification) using FIPS-validated algorithms. Non-security uses of non-approved algorithms (such as MD5 for internal filename generation or deduplication keys) are permitted but do not carry FIPS validation.
 
-When `fips_mode.enabled: true` is set in `logstash.yml`, Logstash additionally:
+When `xpack.security.fips_mode.enabled: true` is set in `logstash.yml`, Logstash additionally:
 
 1. Calls `SecurityHelper.setSecurityProvider(BCFIPSProvider)` before any `require "openssl"`, routing all JCE operations (ciphers, digests, key factories, MACs, etc.) through the BouncyCastle FIPS provider.
 2. Sets `-Djruby.openssl.ssl.provider=BCJSSE` so that `SSLContext` operations use the BCJSSE TLS provider.

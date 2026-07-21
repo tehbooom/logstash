@@ -64,3 +64,5 @@ logstash-core/src/test/resources/org/logstash/plugins/plugin_aliases.yml
 qa/integration/fixtures/logs_rollover/log4j2.properties
 ci/serverless/config/*.log
 jdk/*
+jdk-*/
+JDK_VERSION
