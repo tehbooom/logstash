@@ -18,71 +18,36 @@
 require "spec_helper"
 
 describe "fips_jruby_openssl patch" do
-  let(:ssl_provider_prop) { "jruby.openssl.ssl.provider" }
-  let(:mock_bcfips) { double("BCFIPSProvider", getName: "BCFIPS") }
-  let(:mock_sun)    { double("SUNProvider",    getName: "SUN") }
-
   def load_patch
     load File.expand_path("../../../lib/logstash/patches/fips_jruby_openssl.rb", __dir__)
   end
 
-  context "when BCFIPS is not the first registered provider" do
-    before do
-      allow(java.security.Security).to receive(:getProvider).with("BCFIPS").and_return(nil)
-      allow(java.security.Security).to receive(:getProviders).and_return([mock_sun])
-    end
-
-    it "does not call setSecurityProvider" do
-      expect(org.jruby.ext.openssl.SecurityHelper).not_to receive(:setSecurityProvider)
-      load_patch
-    end
-
-    it "does not set jruby.openssl.ssl.provider" do
-      expect(java.lang.System).not_to receive(:setProperty).with(ssl_provider_prop, anything)
-      load_patch
+  around do |example|
+    properties = [
+      "jruby.openssl.fips.provider",
+      "jruby.openssl.fips.ssl.provider"
+    ]
+    saved = properties.to_h { |property| [property, java.lang.System.getProperty(property)] }
+    properties.each { |property| java.lang.System.clearProperty(property) }
+    example.run
+  ensure
+    saved.each do |property, value|
+      value ? java.lang.System.setProperty(property, value) : java.lang.System.clearProperty(property)
     end
   end
 
-  context "when BCFIPS is present but not the first provider" do
-    before do
-      allow(java.security.Security).to receive(:getProvider).with("BCFIPS").and_return(mock_bcfips)
-      allow(java.security.Security).to receive(:getProviders).and_return([mock_sun, mock_bcfips])
-    end
-
-    it "does not call setSecurityProvider" do
-      expect(org.jruby.ext.openssl.SecurityHelper).not_to receive(:setSecurityProvider)
-      load_patch
-    end
+  it "does not resolve the FIPS-only Java surface on a non-FIPS launch" do
+    expect { load_patch }.not_to raise_error
   end
 
-  context "when BCFIPS is the first registered provider (FIPS mode)" do
-    before do
-      allow(java.security.Security).to receive(:getProvider).with("BCFIPS").and_return(mock_bcfips)
-      allow(java.security.Security).to receive(:getProviders).and_return([mock_bcfips, mock_sun])
-      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return(nil)
-      allow(org.jruby.ext.openssl.SecurityHelper).to receive(:setSecurityProvider)
-      allow(java.lang.System).to receive(:setProperty)
-    end
+  it "loads jopenssl.jar before referencing SecurityHelper" do
+    source = File.read(File.expand_path("../../../lib/logstash/patches/fips_jruby_openssl.rb", __dir__))
+    expect(source.index('require "jopenssl.jar"')).to be < source.index("org.jruby.ext.openssl.SecurityHelper")
+  end
 
-    it "passes the BCFIPS provider to SecurityHelper" do
-      load_patch
-      expect(org.jruby.ext.openssl.SecurityHelper).to have_received(:setSecurityProvider).with(mock_bcfips)
-    end
-
-    it "sets jruby.openssl.ssl.provider to BCJSSE" do
-      load_patch
-      expect(java.lang.System).to have_received(:setProperty).with(ssl_provider_prop, "BCJSSE")
-    end
-
-    it "does not override jruby.openssl.ssl.provider when already set to BCJSSE" do
-      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return("BCJSSE")
-      load_patch
-      expect(java.lang.System).not_to have_received(:setProperty).with(ssl_provider_prop, anything)
-    end
-
-    it "raises when jruby.openssl.ssl.provider is set to a non-FIPS provider" do
-      allow(java.lang.System).to receive(:getProperty).with(ssl_provider_prop).and_return("SunJSSE")
-      expect { load_patch }.to raise_error(RuntimeError, /jruby.openssl.ssl.provider=BCJSSE.*SunJSSE/m)
-    end
+  it "uses the strict contract instead of the legacy imperative override" do
+    source = File.read(File.expand_path("../../../lib/logstash/patches/fips_jruby_openssl.rb", __dir__))
+    expect(source).to include("configureRequiredProvider", "configureRequiredSslProvider")
+    expect(source).not_to include(".setSecurityProvider")
   end
 end

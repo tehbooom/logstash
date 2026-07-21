@@ -15,50 +15,40 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# In FIPS mode, redirect jruby-openssl's crypto operations to the BCFIPS and
-# BCJSSE providers so that all Ruby-level TLS and cryptography uses
-# FIPS-validated modules instead of the non-FIPS BouncyCastle 1.84 bundled
-# with jruby-openssl.
+# Load jruby-openssl's Java extension before referencing SecurityHelper. The
+# extension's strict FIPS contract resolves deployment-registered providers by
+# name and version, and fails instead of falling back when they do not match.
 #
 # This must run before any `require "openssl"` anywhere in the process, because
-# SecurityHelper caches the provider at first initialization.
+# the provider contract is configured while the OpenSSL extension is loaded.
 #
 # Mechanism:
-#   SecurityHelper.setSecurityProvider(provider) - routes MessageDigest, Cipher,
-#     KeyFactory, KeyStore, Signature, etc. through the given provider.
-#   -Djruby.openssl.ssl.provider=BCJSSE - routes SSLContext through BCJSSE
-#     (which delegates to BCFIPS for its crypto).
+#   -Djruby.openssl.fips.provider=BCFIPS:2* requires the JCE provider.
+#   -Djruby.openssl.fips.ssl.provider=BCJSSE:2* requires the JSSE provider.
 #
-# We do NOT set -Djruby.openssl.load.jars=false — jruby-openssl still loads BC
-# 1.84 JARs for its internal class structure, but all JCE/JSSE operations are
-# routed through BCFIPS/BCJSSE instead.
-# We DO keep -Djruby.openssl.provider.register=false (set in bin/logstash.lib.sh)
-# so BC 1.84 is never inserted into the JVM security provider list.
+# The FIPS gem is BC-free. The deployment remains responsible for loading and
+# registering BCFIPS and BCJSSE through java.security before JRuby starts.
+# jruby.openssl.provider.register=false prevents the legacy registration path.
 
-# Activate when BCFIPS is registered as the first JVM security provider.
-# We key off provider presence rather than approved_only=true because we run
-# C:HYBRID mode (matching Elasticsearch) which does not set approved_only.
+jce_requirement = java.lang.System.getProperty("jruby.openssl.fips.provider")
+ssl_requirement = java.lang.System.getProperty("jruby.openssl.fips.ssl.provider")
 
-# Fail fast if openssl was already required before this patch ran. Once
-# SecurityHelper has initialised it caches its provider and setSecurityProvider
-# has no effect, so late loading silently leaves BC 1.84 in charge.
-if defined?(OpenSSL) && org.jruby.ext.openssl.SecurityHelper.isProviderRegistered
-  raise "fips_jruby_openssl must be required before 'openssl': " \
-        "SecurityHelper already initialised with the non-FIPS BC 1.84 provider"
-end
+if jce_requirement || ssl_requirement
+  # Fail fast if openssl was already required before this patch ran. Once
+  # SecurityHelper has initialized its legacy provider, strict configuration can
+  # no longer establish the intended load ordering.
+  require "jopenssl.jar"
 
-bcfips_provider = java.security.Security.getProvider("BCFIPS")
-if bcfips_provider && java.security.Security.getProviders.first&.getName == "BCFIPS"
-  # Route all JCE operations (Cipher, MessageDigest, KeyFactory, etc.) through BCFIPS.
-  org.jruby.ext.openssl.SecurityHelper.setSecurityProvider(bcfips_provider)
-
-  # Route SSLContext through BCJSSE (which uses BCFIPS for its underlying crypto).
-  existing_ssl_provider = java.lang.System.getProperty("jruby.openssl.ssl.provider")
-  if existing_ssl_provider.nil?
-    java.lang.System.setProperty("jruby.openssl.ssl.provider", "BCJSSE")
-  elsif existing_ssl_provider != "BCJSSE"
-    raise "FIPS mode requires jruby.openssl.ssl.provider=BCJSSE, " \
-          "but it is set to #{existing_ssl_provider.inspect}. " \
-          "Remove the -Djruby.openssl.ssl.provider override from jvm.options."
+  security_helper = org.jruby.ext.openssl.SecurityHelper
+  if defined?(OpenSSL) &&
+      !security_helper.isRequiredProviderMode &&
+      security_helper.isProviderRegistered
+    raise "fips_jruby_openssl must be required before 'openssl': " \
+          "SecurityHelper already initialized its legacy security provider"
   end
+
+  # Engage the fork's strict contract before the rest of Logstash can require
+  # openssl.
+  security_helper.configureRequiredProvider
+  security_helper.configureRequiredSslProvider
 end

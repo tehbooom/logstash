@@ -1,4 +1,5 @@
 require_relative "../spec_helper"
+require "shellwords"
 
 context "FipsValidation Integration Plugin" do
   def fips_configured_jvm?
@@ -71,20 +72,19 @@ context "FipsValidation Integration Plugin" do
     FileUtils.cp(fips_java_security, File.join(security_dir, "java.security"))
     truststore = create_bcfks_truststore(security_dir)
 
-    IO.write(
-      File.join(temporary_settings, "jvm.options"),
-      [
-        "-Dio.netty.ssl.provider=JDK",
-        "-Djava.security.properties=#{File.join(security_dir, "java.security")}",
-        "-Djavax.net.ssl.trustStore=#{truststore}",
-        "-Djavax.net.ssl.trustStoreType=BCFKS",
-        "-Djavax.net.ssl.trustStoreProvider=BCFIPS",
-        "-Djavax.net.ssl.trustStorePassword=changeit",
-        "-Dssl.KeyManagerFactory.algorithm=PKIX",
-        "-Dssl.TrustManagerFactory.algorithm=PKIX"
-        # C:HYBRID mode is configured in java.security; approved_only is intentionally not set.
-      ].join("\n")
-    )
+    jvm_options = [
+      "-Dio.netty.ssl.provider=JDK",
+      "-Djava.security.properties=#{File.join(security_dir, "java.security")}",
+      "-Djavax.net.ssl.trustStore=#{truststore}",
+      "-Djavax.net.ssl.trustStoreType=BCFKS",
+      "-Djavax.net.ssl.trustStoreProvider=BCFIPS",
+      "-Djavax.net.ssl.trustStorePassword=changeit",
+      "-Dssl.KeyManagerFactory.algorithm=PKIX",
+      "-Dssl.TrustManagerFactory.algorithm=PKIX",
+      *options.fetch(:jvm_options, [])
+      # C:HYBRID mode is configured in java.security; approved_only is intentionally not set.
+    ]
+    IO.write(File.join(temporary_settings, "jvm.options"), jvm_options.join("\n"))
 
     settings = {
       "xpack.security.fips_mode.enabled" => true,
@@ -93,8 +93,19 @@ context "FipsValidation Integration Plugin" do
     IO.write(File.join(temporary_settings, "logstash.yml"), YAML.dump(settings))
     FileUtils.cp(File.join(get_logstash_path, "config", "log4j2.properties"), File.join(temporary_settings, "log4j2.properties"))
 
-    cmd = logstash_command_append(cmd, "--path.settings", temporary_settings)
-    cmd = logstash_command_append(cmd, "--path.data", temporary_data)
+    if options.fetch(:ruby_probe, false)
+      probe_options = jvm_options + [
+        "-Djruby.openssl.provider.register=false",
+        "-Djruby.openssl.fips.provider=BCFIPS:2*",
+        "-Djruby.openssl.fips.ssl.provider=BCJSSE:2*"
+      ]
+      cmd = "/usr/bin/env LS_JAVA_OPTS=#{Shellwords.escape(probe_options.join(" "))} " \
+        "bin/ruby -J-cp #{Shellwords.escape(File.join(get_logstash_path, "logstash-core/lib/jars/*"))} " \
+        "#{Shellwords.escape(cmd)}"
+    else
+      cmd = logstash_command_append(cmd, "--path.settings", temporary_settings)
+      cmd = logstash_command_append(cmd, "--path.data", temporary_data)
+    end
 
     Belzebuth.run(cmd, { :directory => get_logstash_path }.merge(options.fetch(:belzebuth, {})))
   end
@@ -119,17 +130,16 @@ context "FipsValidation Integration Plugin" do
       response = logstash_plugin("remove", "logstash-integration-fips_validation")
       expect(response).to be_successful
     end
-    it "prevents Logstash from running and logs helpful guidance" do
+    it "does not load a non-FIPS BC fallback when FIPS provider jars are absent" do
       process = logstash_with_empty_default("bin/logstash --log.level=debug -e 'input { generator { count => 1 } }'", timeout: 60)
 
       aggregate_failures do
         expect(process).to_not be_successful
         process.stdout_lines.join.tap do |stdout|
           expect(stdout).to_not include("Pipeline started")
-          expect(stdout).to include("Java security providers are misconfigured")
-          expect(stdout).to include("Java SecureRandom provider is misconfigured")
-          expect(stdout).to include("Bouncycastle Crypto unavailable")
-          expect(stdout).to include("Logstash is not configured in a FIPS-compliant manner")
+          expect(stdout).to include("jruby-openssl-fips bundles no Bouncy Castle jars")
+          expect(stdout).to include("Missing: bc-fips 2.0.1")
+          expect(stdout).not_to include("bcprov-jdk18on")
         end
       end
     end
@@ -161,18 +171,56 @@ context "FipsValidation Integration Plugin" do
   end
 
   context "when standard Logstash is supplied with FIPS files" do
-    it "starts with FIPS mode enabled and required providers present" do
+    it "engages the strict providers before reaching the next OpenSSL startup seam" do
       with_fips_provider_jars_on_logstash_classpath do
+        provider_probe = File.expand_path("fixtures/provider_contract_probe.rb", __dir__)
+        probe = logstash_with_standard_fips_files(
+          provider_probe,
+          :ruby_probe => true,
+          :belzebuth => { :timeout => 60 }
+        )
         process = logstash_with_standard_fips_files(
           "bin/logstash --log.level=debug -e 'input { generator { count => 1 } } output { stdout {} }'",
           :belzebuth => { :timeout => 60 }
         )
 
         aggregate_failures do
-          expect(process).to be_successful
+          probe_output = (probe.stdout_lines + probe.stderr_lines).join
+          expect(probe).to be_successful, probe_output
+          probe_output.tap do |output|
+            expect(output).to include(
+              "FIPS_PROVIDER_CONTRACT required=true " \
+                "jce_property=BCFIPS:2* jce_provider=BCFIPS digest_bytes=32 " \
+                "ssl_property=BCJSSE:2* ssl_provider=BCJSSE"
+            )
+            expect(output).to match(%r{FIPS_COMPAT_REQUIRE resolved=.*/jruby-openssl-fips-[^/]+/})
+            expect(output).to include("next_seam=OpenSSL::X509::StoreError: setting default path failed: JKS not found")
+          end
+
+          expect(process).not_to be_successful
           process.stdout_lines.join.tap do |stdout|
-            expect(stdout).to include("Pipeline started")
-            expect(stdout).not_to include("required FIPS security providers")
+            expect(stdout).to include("setting default path failed: JKS not found")
+            expect(stdout).not_to include("Pipeline started")
+            expect(stdout).not_to include("Required FIPS provider")
+          end
+        end
+      end
+    end
+
+    it "fails loudly when the strict JCE provider requirement mismatches" do
+      with_fips_provider_jars_on_logstash_classpath do
+        process = logstash_with_standard_fips_files(
+          "bin/logstash --log.level=debug -e 'input { generator { count => 1 } } output { stdout {} }'",
+          :jvm_options => ["-Djruby.openssl.fips.provider=BCFIPS:3*"],
+          :belzebuth => { :timeout => 60 }
+        )
+
+        aggregate_failures do
+          expect(process).not_to be_successful
+          process.stdout_lines.join.tap do |stdout|
+            expect(stdout).to include("Required FIPS provider 'BCFIPS:3*' was not found")
+            expect(stdout).to include("found 'BCFIPS:2.")
+            expect(stdout).not_to include("Pipeline started")
           end
         end
       end

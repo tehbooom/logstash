@@ -20,9 +20,9 @@ Logstash runs BouncyCastle FIPS in **C:HYBRID mode**, matching Elasticsearch's F
 
 When `xpack.security.fips_mode.enabled: true` is set in `logstash.yml`, Logstash additionally:
 
-1. Calls `SecurityHelper.setSecurityProvider(BCFIPSProvider)` before any `require "openssl"`, routing all JCE operations (ciphers, digests, key factories, MACs, etc.) through the BouncyCastle FIPS provider.
-2. Sets `-Djruby.openssl.ssl.provider=BCJSSE` so that `SSLContext` operations use the BCJSSE TLS provider.
-3. Sets `-Djruby.openssl.provider.register=false` so that the BouncyCastle 1.84 jar bundled with jruby-openssl is loaded as a class library but not registered as a JCE provider.
+1. Sets `-Djruby.openssl.fips.provider=BCFIPS:2*` so the FIPS fork of jruby-openssl resolves the deployment-registered JCE provider by name and version or fails startup.
+2. Sets `-Djruby.openssl.fips.ssl.provider=BCJSSE:2*` so the fork similarly requires the deployment-registered JSSE provider for `SSLContext`.
+3. Sets `-Djruby.openssl.provider.register=false` to disable jruby-openssl's legacy provider-registration path. The BC-free FIPS gem does not bundle Bouncy Castle jars.
 
 This means any plugin that uses Ruby `OpenSSL::` APIs for TLS will automatically use FIPS-approved algorithms. The issues documented below are cases where a plugin uses a weak algorithm for a **security purpose** (authentication, encryption, integrity verification of network data), hardcodes TLS certificate verification off, or does not accept BCFKS keystores.
 

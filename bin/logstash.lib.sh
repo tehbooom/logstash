@@ -199,10 +199,18 @@ setup_fips_jvm_flags() {
 
   local yml="${settings_dir}/logstash.yml"
   if [ -f "$yml" ] && grep -qE "^\s*xpack\.security\.fips_mode\.enabled\s*:\s*true" "$yml"; then
-    # Prevent non-FIPS BC 1.84 from registering as a JVM security provider.
-    # BC 1.84 JARs are still loaded (jruby-openssl needs them for class structure)
-    # but SecurityHelper is redirected to BCFIPS/BCJSSE in fips_jruby_openssl.rb.
-    JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.provider.register=false -Djruby.openssl.ssl.provider=BCJSSE"
+    # The deployment registers BCFIPS and BCJSSE through java.security. Require
+    # jruby-openssl-fips to resolve those providers by name and version instead
+    # of instantiating or registering a provider itself.
+    JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.provider.register=false"
+    case " ${JAVA_OPTS} " in
+      *" -Djruby.openssl.fips.provider="*) ;;
+      *) JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.fips.provider=BCFIPS:2*" ;;
+    esac
+    case " ${JAVA_OPTS} " in
+      *" -Djruby.openssl.fips.ssl.provider="*) ;;
+      *) JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.fips.ssl.provider=BCJSSE:2*" ;;
+    esac
     export JAVA_OPTS
   fi
 }

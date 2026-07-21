@@ -38,7 +38,7 @@ else
 fi
 
 . "$(cd `dirname ${SOURCEPATH}`/..; pwd)/bin/logstash.lib.sh"
-setup
+setup "$@"
 
 if [ "$1" = "-V" ] || [ "$1" = "--version" ]; then
   LOGSTASH_VERSION_FILE1="${LOGSTASH_HOME}/logstash-core/versions-gem-copy.yml"
