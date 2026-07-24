@@ -185,40 +185,9 @@ setup_vendored_jruby() {
   fi
 }
 
-setup_fips_jvm_flags() {
-  # Detect the settings directory: honour --path.settings if provided, else default
-  local settings_dir="${LOGSTASH_HOME}/config"
-  local found_settings=0
-  for arg in "$@"; do
-    if [ $found_settings -eq 1 ]; then
-      settings_dir="$arg"
-      break
-    fi
-    [ "$arg" = "--path.settings" ] && found_settings=1
-  done
-
-  local yml="${settings_dir}/logstash.yml"
-  if [ -f "$yml" ] && grep -qE "^\s*xpack\.security\.fips_mode\.enabled\s*:\s*true" "$yml"; then
-    # The deployment registers BCFIPS and BCJSSE through java.security. Require
-    # jruby-openssl-fips to resolve those providers by name and version instead
-    # of instantiating or registering a provider itself.
-    JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.provider.register=false"
-    case " ${JAVA_OPTS} " in
-      *" -Djruby.openssl.fips.provider="*) ;;
-      *) JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.fips.provider=BCFIPS:2*" ;;
-    esac
-    case " ${JAVA_OPTS} " in
-      *" -Djruby.openssl.fips.ssl.provider="*) ;;
-      *) JAVA_OPTS="${JAVA_OPTS} -Djruby.openssl.fips.ssl.provider=BCJSSE:2*" ;;
-    esac
-    export JAVA_OPTS
-  fi
-}
-
 setup() {
   >&2 setup_java
   >&2 setup_vendored_jruby
-  setup_fips_jvm_flags "$@"
 }
 
 ruby_exec() {

@@ -18,12 +18,13 @@
  */
 package org.logstash.settings;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class NullableStringSetting extends StringSetting {
 
     public NullableStringSetting(String name, String defaultValue, boolean strict, List<String> possibleStrings) {
-        super(name, defaultValue, strict, possibleStrings);
+        super(name, defaultValue, strict, withNullAllowed(possibleStrings));
     }
 
     public NullableStringSetting(String name, String defaultValue) {
@@ -44,5 +45,13 @@ public class NullableStringSetting extends StringSetting {
             return;
         }
         super.validate(input);
+    }
+
+    private static List<String> withNullAllowed(List<String> possibleStrings) {
+        final List<String> nullablePossibleStrings = new ArrayList<>(possibleStrings);
+        if (!nullablePossibleStrings.contains(null)) {
+            nullablePossibleStrings.add(null);
+        }
+        return nullablePossibleStrings;
     }
 }

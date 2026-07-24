@@ -1,0 +1,4 @@
+# Copy to fips.options and remove this comment to enable FIPS provider wiring.
+-Djruby.openssl.provider.register=false
+-Djruby.openssl.fips.provider=BCFIPS:2*
+-Djruby.openssl.fips.ssl.provider=BCJSSE:2*

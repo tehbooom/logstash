@@ -193,15 +193,14 @@ context "FipsValidation Integration Plugin" do
                 "jce_property=BCFIPS:2* jce_provider=BCFIPS digest_bytes=32 " \
                 "ssl_property=BCJSSE:2* ssl_provider=BCJSSE"
             )
-            expect(output).to match(%r{FIPS_COMPAT_REQUIRE resolved=.*/jruby-openssl-fips-[^/]+/})
-            expect(output).to include("next_seam=OpenSSL::X509::StoreError: setting default path failed: JKS not found")
+            expect(output).to include("FIPS_COMPAT_REQUIRE loaded=true")
           end
 
-          expect(process).not_to be_successful
+          expect(process).to be_successful
           process.stdout_lines.join.tap do |stdout|
-            expect(stdout).to include("setting default path failed: JKS not found")
-            expect(stdout).not_to include("Pipeline started")
+            expect(stdout).to include("Pipeline started")
             expect(stdout).not_to include("Required FIPS provider")
+            expect(stdout).not_to include("setting default path failed: JKS not found")
           end
         end
       end

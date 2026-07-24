@@ -42,6 +42,7 @@ module LogStash
         ssl_params = {}
         ssl_params[:keystore_path] = required_setting(settings, 'api.ssl.keystore.path', "api.ssl.enabled")
         ssl_params[:keystore_password] = required_setting(settings, 'api.ssl.keystore.password', "api.ssl.enabled")
+        ssl_params[:keystore_type] = settings.get('api.ssl.keystore.type')
         ssl_params[:supported_protocols] = settings.get('api.ssl.supported_protocols')
         options[:ssl_params] = ssl_params.freeze
       else
@@ -124,6 +125,7 @@ module LogStash
     # @option :ssl_params [Hash{Symbol=>Object}]
     #             :keystore_path [String]
     #             :keystore_password [LogStash::Util::Password]
+    #             :keystore_type [String]
     # @option :auth_basic [Hash{Symbol=>Object}]
     #             :username [String]
     #             :password [LogStash::Util::Password]
@@ -133,7 +135,10 @@ module LogStash
       @http_host = options[:http_host] || DEFAULT_HOST
       @http_ports = options[:http_ports] || DEFAULT_PORTS
       @http_environment = options[:http_environment] || DEFAULT_ENVIRONMENT
-      @ssl_params = options[:ssl_params] if options.include?(:ssl_params)
+      if options.include?(:ssl_params)
+        keystore_type = resolve_keystore_type(options[:ssl_params][:keystore_type])
+        @ssl_params = options[:ssl_params].merge(:keystore_type => keystore_type).freeze
+      end
       @running = Concurrent::AtomicBoolean.new(false)
       @mutex = Mutex.new
 
@@ -228,6 +233,7 @@ module LogStash
         context_builder_params = {
             'keystore' => @ssl_params.fetch(:keystore_path),
             'keystore-pass' => @ssl_params.fetch(:keystore_password).value,
+            'keystore-type' => @ssl_params.fetch(:keystore_type),
         }
 
         supported_protocols = @ssl_params.fetch(:supported_protocols, [])
@@ -254,15 +260,20 @@ module LogStash
 
       raise("Password not provided!") unless @ssl_params.fetch(:keystore_password).value
 
-      fips_active = !java.security.Security.getProvider("BCFIPS").nil? &&
-        java.security.Security.getProviders.first&.getName == "BCFIPS"
-      keystore_type = @ssl_params[:keystore_type] || (fips_active ? "BCFKS" : "JKS")
-
+      keystore_type = @ssl_params.fetch(:keystore_type)
       java.security.KeyStore.getInstance(keystore_type)
           .load(java.io.FileInputStream.new(@ssl_params.fetch(:keystore_path)),
                 @ssl_params.fetch(:keystore_password).value.chars&.to_java(:char))
     rescue => e
       raise ArgumentError.new("API Keystore could not be opened (#{e})")
+    end
+
+    def resolve_keystore_type(configured_type)
+      return configured_type if configured_type
+
+      fips_active = !java.security.Security.getProvider("BCFIPS").nil? &&
+        java.security.Security.getProviders.first&.getName == "BCFIPS"
+      fips_active ? "bcfks" : "jks"
     end
   end
 end

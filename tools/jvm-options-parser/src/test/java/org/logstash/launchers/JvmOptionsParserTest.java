@@ -186,12 +186,45 @@ public class JvmOptionsParserTest {
         assertEquals("LS_JAVA_OPTS env must take precedence over jvm.options file", expected, lastMatch);
     }
 
+    @Test
+    public void testJvmOptionsDirectoryFilesAreSortedAndMergedBeforeLsJavaOpts() throws IOException {
+        File optionsFile = writeIntoTempOptionsFile(writer -> writer.println("-Dorder=base"));
+        File optionsDirectory = temp.newFolder("jvm.options.d");
+        writeOptionsFile(new File(optionsDirectory, "20-last.options"), writer -> writer.println("-Dorder=last"));
+        writeOptionsFile(new File(optionsDirectory, "10-first.options"), writer -> {
+            writer.println("# comment");
+            writer.println();
+            writer.println("21-:-Dorder=first");
+        });
+        writeOptionsFile(new File(optionsDirectory, "15-ignored.example"), writer -> writer.println("-Dorder=ignored"));
+
+        JvmOptionsParser.handleJvmOptions(
+                new String[] {"/path/to/ls_home", optionsFile.toString()},
+                "-Dorder=environment"
+        );
+
+        final String output = outputStreamCaptor.toString();
+        final int base = output.indexOf("-Dorder=base");
+        final int first = output.indexOf("-Dorder=first");
+        final int last = output.indexOf("-Dorder=last");
+        final int environment = output.indexOf("-Dorder=environment");
+
+        assertTrue("jvm.options must be processed before jvm.options.d files", base < first);
+        assertTrue("jvm.options.d files must be processed in lexicographic order", first < last);
+        assertTrue("LS_JAVA_OPTS must be processed after jvm.options.d files", last < environment);
+        assertFalse("Files without the .options suffix must be ignored", output.contains("-Dorder=ignored"));
+    }
+
     private File writeIntoTempOptionsFile(Consumer<PrintWriter> writer) throws IOException {
         File optionsFile = temp.newFile("jvm.options");
+        writeOptionsFile(optionsFile, writer);
+        return optionsFile;
+    }
+
+    private void writeOptionsFile(File optionsFile, Consumer<PrintWriter> writer) throws IOException {
         PrintWriter optionsWriter = new PrintWriter(new FileWriter(optionsFile));
         writer.accept(optionsWriter);
         optionsWriter.close();
-        return optionsFile;
     }
 
     private void verifyOptions(String message, String expected, JvmOptionsParser.ParseResult res) {

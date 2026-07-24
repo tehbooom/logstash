@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -43,6 +44,7 @@ import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 
@@ -173,6 +175,12 @@ public class JvmOptionsParser {
         // Add JVM Options from config/jvm.options
         final Set<String> jvmOptionsContent = new LinkedHashSet<>(getJvmOptionsFromFile(jvmOptionsFile, javaMajorVersion));
 
+        // Add JVM Options from config/jvm.options.d/*.options
+        if (jvmOptionsFile.isPresent()) {
+            final Path jvmOptionsDirectory = jvmOptionsFile.get().resolveSibling("jvm.options.d");
+            jvmOptionsContent.addAll(getJvmOptionsFromDirectory(jvmOptionsDirectory, javaMajorVersion));
+        }
+
         // Add JVM Options from LS_JAVA_OPTS
         if (lsJavaOpts != null && !lsJavaOpts.isEmpty()) {
             if (isDebugEnabled()) {
@@ -245,6 +253,28 @@ public class JvmOptionsParser {
             }
             return parseResults.getJvmOptions();
         }
+    }
+
+    private List<String> getJvmOptionsFromDirectory(final Path jvmOptionsDirectory, final int javaMajorVersion)
+            throws IOException, JvmOptionsFileParserException {
+        if (!Files.isDirectory(jvmOptionsDirectory)) {
+            return Collections.emptyList();
+        }
+
+        final List<Path> optionsFiles;
+        try (Stream<Path> files = Files.list(jvmOptionsDirectory)) {
+            optionsFiles = files
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".options"))
+                    .sorted(Comparator.comparing(path -> path.getFileName().toString()))
+                    .collect(Collectors.toList());
+        }
+
+        final List<String> jvmOptions = new ArrayList<>();
+        for (final Path optionsFile : optionsFiles) {
+            jvmOptions.addAll(getJvmOptionsFromFile(Optional.of(optionsFile), javaMajorVersion));
+        }
+        return jvmOptions;
     }
 
     private boolean isDebugEnabled() {

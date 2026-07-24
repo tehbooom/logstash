@@ -153,7 +153,7 @@ describe LogStash::WebServer do
     end
   end
 
-  describe "#validate_keystore_access!" do
+  describe "SSL keystore type resolution" do
     let(:keystore_password) { double("password", value: "changeit") }
     let(:mock_input_stream) { double("FileInputStream") }
     let(:ssl_params) { { keystore_path: "/path/to/keystore", keystore_password: keystore_password } }
@@ -165,16 +165,38 @@ describe LogStash::WebServer do
       allow(keystore).to receive(:load)
     end
 
+    def expect_keystore_type_passed_to_puma(webserver, type)
+      ssl_context = double("ssl_context")
+      context_builder = double("context_builder", context: ssl_context)
+      server = double("server", log_writer: logger)
+      webserver.instance_variable_set(:@server, server)
+
+      expect(Puma::MiniSSL::ContextBuilder).to receive(:new)
+        .with(hash_including("keystore-type" => type), logger)
+        .and_return(context_builder)
+      expect(server).to receive(:add_ssl_listener).with(api_host, port_range.first, ssl_context)
+
+      webserver.send(:bind_to_port, port_range.first)
+    end
+
     context "in non-FIPS mode" do
       before do
         allow(java.security.Security).to receive(:getProvider).with("BCFIPS").and_return(nil)
         allow(java.security.Security).to receive(:getProviders).and_return([])
-        stub_keystore_load("JKS")
       end
 
       it "uses JKS by default" do
+        stub_keystore_load("jks")
         ws = LogStash::WebServer.new(logger, agent, webserver_options.merge(:ssl_params => ssl_params))
-        expect(java.security.KeyStore).to have_received(:getInstance).with("JKS")
+        expect(java.security.KeyStore).to have_received(:getInstance).with("jks")
+      end
+
+      it "passes an explicitly configured BCFKS keystore type to Puma" do
+        stub_keystore_load("bcfks")
+        opts = webserver_options.merge(:ssl_params => ssl_params.merge(keystore_type: "bcfks"))
+        ws = LogStash::WebServer.new(logger, agent, opts)
+
+        expect_keystore_type_passed_to_puma(ws, "bcfks")
       end
     end
 
@@ -186,10 +208,12 @@ describe LogStash::WebServer do
         allow(java.security.Security).to receive(:getProviders).and_return([mock_bcfips])
       end
 
-      it "uses BCFKS by default" do
-        stub_keystore_load("BCFKS")
+      it "auto-detects BCFKS and passes the resolved type to Puma" do
+        stub_keystore_load("bcfks")
         ws = LogStash::WebServer.new(logger, agent, webserver_options.merge(:ssl_params => ssl_params))
-        expect(java.security.KeyStore).to have_received(:getInstance).with("BCFKS")
+        expect(java.security.KeyStore).to have_received(:getInstance).with("bcfks")
+
+        expect_keystore_type_passed_to_puma(ws, "bcfks")
       end
 
       it "uses the explicitly configured keystore type when provided" do

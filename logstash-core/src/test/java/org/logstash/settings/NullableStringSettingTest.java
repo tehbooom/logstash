@@ -1,3 +1,21 @@
+/*
+ * Licensed to Elasticsearch B.V. under one or more contributor
+ * license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright
+ * ownership. Elasticsearch B.V. licenses this file to you under
+ * the Apache License, Version 2.0 (the "License"); you may
+ * not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *	http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package org.logstash.settings;
 
 import org.junit.Before;
@@ -14,13 +32,18 @@ import static org.junit.Assert.*;
 @RunWith(Enclosed.class)
 public class NullableStringSettingTest {
 
-    public static class WithValueConstraintCase{
+    public static class WithValueConstraintCase {
         private static final List<String> POSSIBLE_VALUES = List.of("a", "b", "c");
         private StringSetting sut;
 
         @Before
-        public void setUp() throws Exception {
-            sut = new NullableStringSetting("mytext", POSSIBLE_VALUES.iterator().next(), true, POSSIBLE_VALUES);
+        public void setUp() {
+            sut = new NullableStringSetting("mytext", null, true, POSSIBLE_VALUES);
+        }
+
+        @Test
+        public void whenDefaultIsNullThenReturnNull() {
+            assertNull(sut.value());
         }
 
         @Test
@@ -50,7 +73,7 @@ public class NullableStringSettingTest {
         private StringSetting sut;
 
         @Before
-        public void setUp() throws Exception {
+        public void setUp() {
             sut = new NullableStringSetting("mytext", "foo", true);
         }
 

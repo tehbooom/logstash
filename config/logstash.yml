@@ -177,11 +177,13 @@
 # api.environment: "production"
 #
 # The HTTP API can be secured with SSL (TLS). To do so, you will need to provide
-# the path to a password-protected keystore in p12 or jks format, along with credentials.
+# the path to a password-protected keystore in jks, pkcs12, or bcfks format, along with credentials.
 #
 # api.ssl.enabled: false
 # api.ssl.keystore.path: /path/to/keystore.jks
 # api.ssl.keystore.password: "y0uRp4$$w0rD"
+# When omitted, the keystore type is bcfks when BCFIPS is the first security provider, and jks otherwise.
+# api.ssl.keystore.type: "jks"
 #
 # The availability of SSL/TLS protocols depends on the JVM version. Certain protocols are
 # disabled by default and need to be enabled manually by changing `jdk.tls.disabledAlgorithms`

@@ -88,7 +88,7 @@ begin
   c.iv  = "12345678"
   ct = c.update("hello world!") + c.final
   puts "des-cbc: ACCEPTED (#{ct.bytesize} bytes) — JRuby-OpenSSL BYPASSES the approved_only gate"
-  results << ["JRuby-OpenSSL", "OpenSSL::Cipher.new('des-cbc')", "ACCEPTED", "bypasses BCFIPS approved-only gate — confirms check! necessity"]
+  results << ["JRuby-OpenSSL", "OpenSSL::Cipher.new('des-cbc')", "ACCEPTED", "bypasses BCFIPS approved-only gate"]
 rescue OpenSSL::Cipher::CipherError => e
   puts "des-cbc: OpenSSL::Cipher::CipherError — #{e.message}"
   results << ["JRuby-OpenSSL", "OpenSSL::Cipher.new('des-cbc')", "CipherError", e.message.lines.first.chomp]
@@ -107,7 +107,7 @@ begin
   digest = OpenSSL::Digest.new("md5")
   result = OpenSSL::HMAC.hexdigest(digest, "key", "data")
   puts "HMAC-MD5: ACCEPTED => #{result} — JRuby-OpenSSL BYPASSES the approved_only gate"
-  results << ["JRuby-OpenSSL", "HMAC.hexdigest(MD5, ...)", "ACCEPTED", "bypasses BCFIPS approved-only gate — confirms check! necessity"]
+  results << ["JRuby-OpenSSL", "HMAC.hexdigest(MD5, ...)", "ACCEPTED", "bypasses BCFIPS approved-only gate"]
 rescue => e
   puts "HMAC-MD5: #{e.class}: #{e.message.lines.first.chomp}"
   results << ["JRuby-OpenSSL", "HMAC.hexdigest(MD5, ...)", "#{e.class}", e.message.lines.first.chomp]
@@ -179,11 +179,10 @@ puts "KEY QUESTION — TEST 3 (JRuby-OpenSSL bypass):"
 t3 = results.select { |r| r[0] == "JRuby-OpenSSL" }
 if t3.all? { |r| r[2] == "ACCEPTED" }
   puts "  CONFIRMED: JRuby-OpenSSL bypasses the BCFIPS approved_only gate."
-  puts "  LogStash::FIPS.check! is the sole enforcement layer for Ruby-layer crypto."
   puts "  The ES-based prediction was CORRECT for the JRuby case."
 elsif t3.all? { |r| r[2].start_with?("BLOCKED") }
   puts "  REFUTED: JRuby-OpenSSL is also blocked by approved_only=true."
-  puts "  The gate propagates through the JRuby-OpenSSL layer — check! is defence-in-depth."
+  puts "  The gate propagates through the JRuby-OpenSSL layer."
 else
   puts "  MIXED: #{t3.map{|r| "#{r[1]}=>#{r[2]}"}.join(", ")}"
 end
